@@ -63,10 +63,8 @@ def handle_cart():
             melon_object = melons.get_by_id(melon)
             quantity = cart[melon]
             melon_object.update_quantity_cost(quantity)
-
             names_of_melons.append(melon_object)
             cart_total += melon_object.total_cost
-
             return names_of_melons, cart_total
 
 
@@ -124,18 +122,15 @@ def show_shopping_cart():
         cart = session['cart']
         names_of_melons = []
         cart_total = 0
-        for melon in cart:
+        for melon in cart:                     
             melon_object = melons.get_by_id(melon)
             quantity = cart[melon]
             melon_object.update_quantity_cost(quantity)
-
             names_of_melons.append(melon_object)
             cart_total += melon_object.total_cost
-
-    else:
+    else:       
         flash("There are no items in your cart. Go find some melons.")
-
-    
+                                     
     return render_template("cart.html", melon_list = names_of_melons, cart_total=cart_total)
 
 
@@ -236,12 +231,22 @@ def process_login():
 @app.route("/checkout", methods=['GET', 'POST'])
 def checkout():
     form = Checkout()
-    names_of_melons, cart_total = handle_cart()
+        # Make sure your function can also handle the case wherein no cart has
+    # been added to the session
+    if session['cart']:
+        cart = session['cart']
+        names_of_melons = []
+        cart_total = 0
+        for melon in cart:
+            melon_object = melons.get_by_id(melon)
+            quantity = cart[melon]
+            melon_object.update_quantity_cost(quantity)
+            names_of_melons.append(melon_object)
+            cart_total += melon_object.total_cost
     if form.validate_on_submit():
+        session['cart'] = {}             
         flash('Your order has been successfully submitted and payment is also done','success')        
-        return redirect("/melons")
-        
-        
+        return redirect("/melons")               
         customer = stripe.Customer.create(email=request.form['stripeEmail'], source=request.form['stripeToken'])
         print(request.form)
         names_of_melons, cart_total = handle_cart()
@@ -250,7 +255,7 @@ def checkout():
             amount=cart_total,
             currency='usd',
             description='The Product'
-        )
+        )        
         flash('Your order has been successfully submitted and payment is also done','success')
         return redirect(url_for('index'))
 
@@ -261,7 +266,17 @@ def pay():
 
     customer = stripe.Customer.create(email=request.form['stripeEmail'], source=request.form['stripeToken'])
     print(request.form)
-    names_of_melons, cart_total = handle_cart()
+        # been added to the session
+    if session['cart']:
+        cart = session['cart']
+        names_of_melons = []
+        cart_total = 0
+        for melon in cart:
+            melon_object = melons.get_by_id(melon)
+            quantity = cart[melon]
+            melon_object.update_quantity_cost(quantity)
+            names_of_melons.append(melon_object)
+            cart_total += melon_object.total_cost
     charge = stripe.Charge.create(
         customer=customer.id,
         amount=cart_total,
