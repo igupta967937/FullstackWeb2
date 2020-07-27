@@ -5,15 +5,20 @@ put melons in a shopping cart.
 
 Authors: Joel Burton, Christian Fernandez, Meggie Mahnken, Katie Byers.
 """
-
+from flask_ngrok import run_with_ngrok
 from flask import Flask,request,render_template, redirect, flash, session
 import jinja2
+import stripe
+from flask_wtf import FlaskForm
+from wtforms import StringField, IntegerField, TextAreaField, HiddenField, SelectField, SubmitField, PasswordField
+from flask_wtf.file import FileField, FileAllowed
 
 import melons
 
 import customers
 
 app = Flask(__name__)
+run_with_ngrok(app)   #starts ngrok when the app is run
 
 # A secret key is needed to use Flask sessioning features
 app.secret_key = 'this-should-be-something-unguessable'
@@ -24,9 +29,45 @@ app.secret_key = 'this-should-be-something-unguessable'
 # error.
 app.jinja_env.undefined = jinja2.StrictUndefined
 
+pub_key = 'pk_test_ehAVPFKRm6CKrzTW4F707sqF00zKTuDok9'
+# This is a public key that one can obtain from the stripe website if you wish to carry on with any credit card transactions.
+
+
+secret_key = 'sk_test_wawTZFb80biOYE4xP5OnpZke00WxjldcSP'
+# This is a secret key that one can obtain from the stripe website if you wish to carry on with any credit card transactions.
+stripe.api_key=secret_key
+# The same secret key is then passed to the stripe to carry on the further processes.
+
 # This configuration option makes the Flask interactive debugger
 # more useful (you should remove this line in production though)
 app.config['PRESERVE_CONTEXT_ON_EXCEPTION'] = True
+
+class Checkout(FlaskForm):
+    first_name = StringField('First Name')
+    last_name = StringField('Last Name')
+    phone_number = StringField('Number')
+    email = StringField('Email')
+    address = StringField('Address')
+    city = StringField('City')
+    state = SelectField('State', choices=[('CA', 'Dublin'), ('CR', 'Cork'), ('GL', 'Galway')])
+    country = SelectField('Country', choices=[('IR', 'Ireland'), ('UK', 'United Kingdom'), ('IN', 'India')])
+    payment_type = SelectField('Payment Type', choices=[('CC', 'Credit Card'), ('DC', 'Debit Card')])
+
+
+def handle_cart():
+      if session['cart']:
+        cart = session['cart']
+        names_of_melons = []
+        cart_total = 0
+        for melon in cart:
+            melon_object = melons.get_by_id(melon)
+            quantity = cart[melon]
+            melon_object.update_quantity_cost(quantity)
+
+            names_of_melons.append(melon_object)
+            cart_total += melon_object.total_cost
+
+            return names_of_melons, cart_total
 
 
 @app.route("/")
@@ -192,16 +233,43 @@ def process_login():
         return redirect('/login')
 
 
-@app.route("/checkout")
+@app.route("/checkout", methods=['GET', 'POST'])
 def checkout():
-    """Checkout customer, process payment, and ship melons."""
+    form = Checkout()
+    names_of_melons, cart_total = handle_cart()
+    if form.validate_on_submit():
+        flash('Your order has been successfully submitted and payment is also done','success')        
+        return redirect("/melons")
+        
+        
+        customer = stripe.Customer.create(email=request.form['stripeEmail'], source=request.form['stripeToken'])
+        print(request.form)
+        names_of_melons, cart_total = handle_cart()
+        charge = stripe.Charge.create(
+            customer=customer.id,
+            amount=cart_total,
+            currency='usd',
+            description='The Product'
+        )
+        flash('Your order has been successfully submitted and payment is also done','success')
+        return redirect(url_for('index'))
 
-    # For now, we'll just provide a warning. Completing this is beyond the
-    # scope of this exercise.
+    return render_template('checkout.html', form=form, grand_total=cart_total, quantity_total=cart_total, grand_total_plus_shipping=cart_total, pub_key=pub_key)
 
-    flash("Sorry! Checkout will be implemented in a future version.")
-    return redirect("/melons")
+@app.route("/pay", methods=['POST'])
+def pay():
+
+    customer = stripe.Customer.create(email=request.form['stripeEmail'], source=request.form['stripeToken'])
+    print(request.form)
+    names_of_melons, cart_total = handle_cart()
+    charge = stripe.Charge.create(
+        customer=customer.id,
+        amount=cart_total,
+        currency='usd',
+        description='The Product'
+    )
+    return 'successfully Done'
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0")
+    app.run()
